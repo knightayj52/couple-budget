@@ -381,7 +381,7 @@ if(localStorage.getItem('theme')==='dark'){document.body.classList.add('dark');g
 g('date-input').value=now.toISOString().split('T')[0];
 
 // 버튼 이벤트
-g('btn-google-login').addEventListener('click',async()=>{try{await signInWithPopup(auth,new GoogleAuthProvider())}catch(e){showErr(e.message)}});
+g('btn-google-login').addEventListener('click',async()=>{try{const provider=new GoogleAuthProvider();provider.setCustomParameters({prompt:'select_account'});await signInWithPopup(auth,provider)}catch(e){showErr(e.message)}});
 g('btn-email-login').addEventListener('click',async()=>{const em=g('email-input').value,pw=g('pw-input').value;try{if(isSignup)await createUserWithEmailAndPassword(auth,em,pw);else await signInWithEmailAndPassword(auth,em,pw)}catch(e){showErr(e.code==='auth/invalid-credential'?'이메일 또는 비밀번호가 올바르지 않습니다.':e.message)}});
 g('toggle-signup').addEventListener('click',()=>{isSignup=!isSignup;g('btn-email-login').textContent=isSignup?'회원가입':'이메일로 로그인';g('toggle-signup').textContent=isSignup?'로그인':'회원가입'});
 g('btn-logout').addEventListener('click',async()=>{if(unsubTx)unsubTx();if(unsubSet)unsubSet();await signOut(auth)});
