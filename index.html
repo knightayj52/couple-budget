@@ -209,6 +209,7 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
     <div class="login-title">우리 가계부</div>
     <div class="login-sub">부부가 함께 관리하는 스마트 가계부</div>
     <button class="btn-google" id="btn-google-login"><img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="G"/> Google 계정으로 로그인</button>
+    <button class="btn-google" id="btn-google-switch" style="margin-top:0;border-color:var(--primary-light);color:var(--text-secondary);font-size:13px"><img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="G"/> 다른 Google 계정으로 로그인</button>
     <div class="divider">또는</div>
     <div id="error-msg" class="error-msg"></div>
     <div class="input-group"><label>이메일</label><input type="email" id="email-input" placeholder="이메일 입력"/></div>
@@ -382,9 +383,10 @@ g('date-input').value=now.toISOString().split('T')[0];
 
 // 버튼 이벤트
 g('btn-google-login').addEventListener('click',async()=>{try{const provider=new GoogleAuthProvider();provider.setCustomParameters({prompt:'select_account'});await signInWithPopup(auth,provider)}catch(e){showErr(e.message)}});
+g('btn-google-switch').addEventListener('click',async()=>{try{const provider=new GoogleAuthProvider();provider.setCustomParameters({prompt:'select_account',login_hint:''});await signInWithPopup(auth,provider)}catch(e){showErr(e.message)}});
 g('btn-email-login').addEventListener('click',async()=>{const em=g('email-input').value,pw=g('pw-input').value;try{if(isSignup)await createUserWithEmailAndPassword(auth,em,pw);else await signInWithEmailAndPassword(auth,em,pw)}catch(e){showErr(e.code==='auth/invalid-credential'?'이메일 또는 비밀번호가 올바르지 않습니다.':e.message)}});
 g('toggle-signup').addEventListener('click',()=>{isSignup=!isSignup;g('btn-email-login').textContent=isSignup?'회원가입':'이메일로 로그인';g('toggle-signup').textContent=isSignup?'로그인':'회원가입'});
-g('btn-logout').addEventListener('click',async()=>{if(unsubTx)unsubTx();if(unsubSet)unsubSet();await signOut(auth)});
+g('btn-logout').addEventListener('click',async()=>{if(unsubTx)unsubTx();if(unsubSet)unsubSet();await signOut(auth);});
 g('theme-btn').addEventListener('click',()=>{const d=document.body.classList.toggle('dark');localStorage.setItem('theme',d?'dark':'light');g('theme-btn').textContent=d?'☀️':'🌙'});
 g('type-income-btn').addEventListener('click',()=>setType('income'));
 g('type-expense-btn').addEventListener('click',()=>setType('expense'));
