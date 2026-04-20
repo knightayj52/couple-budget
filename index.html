@@ -351,12 +351,15 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getAuth, signInWithPopup, GoogleAuthProvider, signInWithEmailAndPassword, createUserWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+import { getAuth, signInWithPopup, GoogleAuthProvider, signInWithEmailAndPassword, createUserWithEmailAndPassword, onAuthStateChanged, signOut, getRedirectResult } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import { getFirestore, doc, collection, addDoc, onSnapshot, deleteDoc, updateDoc, setDoc, getDoc, query, orderBy, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
 const app = initializeApp({apiKey:"AIzaSyCUxljPd4_l7O54komV28wOYtqRBi7dRgM",authDomain:"couple-budget-71271.firebaseapp.com",projectId:"couple-budget-71271",storageBucket:"couple-budget-71271.firebasestorage.app",messagingSenderId:"952025069468",appId:"1:952025069468:web:3c9ff9e138dbc9e99c7a59",measurementId:"G-1DE7GKZ7N2"});
 const auth = getAuth(app);
 const db = getFirestore(app);
+
+// 모바일 redirect 로그인 결과 처리
+getRedirectResult(auth).catch(()=>{});
 
 // 상태
 let cu=null, hid=null, txs=[], incCats=[], expCats=[], assets=[], debts=[], budgets={}, fexps=[], fincs=[], goals=[];
@@ -388,8 +391,31 @@ if(localStorage.getItem('theme')==='dark'){document.body.classList.add('dark');g
 g('date-input').value=now.toISOString().split('T')[0];
 
 // 버튼 이벤트
-g('btn-google-login').addEventListener('click',async()=>{try{const provider=new GoogleAuthProvider();provider.setCustomParameters({prompt:'select_account'});await signInWithPopup(auth,provider)}catch(e){showErr(e.message)}});
-g('btn-google-switch').addEventListener('click',async()=>{try{const provider=new GoogleAuthProvider();provider.setCustomParameters({prompt:'select_account',login_hint:''});await signInWithPopup(auth,provider)}catch(e){showErr(e.message)}});
+const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+g('btn-google-login').addEventListener('click',async()=>{
+  try{
+    const provider=new GoogleAuthProvider();
+    provider.setCustomParameters({prompt:'select_account'});
+    if(isMobile){
+      const {signInWithRedirect}=await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js");
+      await signInWithRedirect(auth,provider);
+    } else {
+      await signInWithPopup(auth,provider);
+    }
+  }catch(e){showErr(e.message)}
+});
+g('btn-google-switch').addEventListener('click',async()=>{
+  try{
+    const provider=new GoogleAuthProvider();
+    provider.setCustomParameters({prompt:'select_account',login_hint:''});
+    if(isMobile){
+      const {signInWithRedirect}=await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js");
+      await signInWithRedirect(auth,provider);
+    } else {
+      await signInWithPopup(auth,provider);
+    }
+  }catch(e){showErr(e.message)}
+});
 g('btn-email-login').addEventListener('click',async()=>{const em=g('email-input').value,pw=g('pw-input').value;try{if(isSignup)await createUserWithEmailAndPassword(auth,em,pw);else await signInWithEmailAndPassword(auth,em,pw)}catch(e){showErr(e.code==='auth/invalid-credential'?'이메일 또는 비밀번호가 올바르지 않습니다.':e.message)}});
 g('toggle-signup').addEventListener('click',()=>{isSignup=!isSignup;g('btn-email-login').textContent=isSignup?'회원가입':'이메일로 로그인';g('toggle-signup').textContent=isSignup?'로그인':'회원가입'});
 g('btn-logout').addEventListener('click',async()=>{if(unsubTx)unsubTx();if(unsubSet)unsubSet();await signOut(auth);});
