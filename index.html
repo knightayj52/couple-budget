@@ -205,6 +205,15 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
 .loading{text-align:center;padding:32px;color:var(--text-secondary);font-size:14px}
 .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(80px);background:#1E293B;color:white;padding:11px 18px;border-radius:12px;font-size:14px;font-weight:500;z-index:999;transition:transform 0.3s;white-space:nowrap}
 .toast.show{transform:translateX(-50%) translateY(0)}
+/* 카드 임포트 */
+.card-import-item{display:flex;align-items:center;gap:8px;padding:10px 0;border-bottom:1px solid var(--border)}
+.card-import-item:last-child{border-bottom:none}
+.card-import-item input[type=checkbox]{width:16px;height:16px;accent-color:var(--primary);flex-shrink:0;cursor:pointer}
+.card-import-info{flex:1}
+.card-import-name{font-size:13px;font-weight:500}
+.card-import-date{font-size:11px;color:var(--text-secondary)}
+.card-import-cat{font-size:12px;padding:2px 8px;border:1px solid var(--border);border-radius:6px;background:var(--card);color:var(--text);font-family:inherit;outline:none}
+.card-import-amt{font-size:13px;font-weight:700;color:var(--expense);white-space:nowrap;flex-shrink:0}
 @media(max-width:480px){.form-row{grid-template-columns:1fr}.report-summary{grid-template-columns:1fr 1fr}.login-card{padding:32px 24px}}
 </style>
 </head>
@@ -277,6 +286,31 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
       </div>
     </div>
     <div id="tab-transactions" class="tab-content">
+      <!-- 카드사 엑셀 업로드 -->
+      <div class="card">
+        <div class="card-title">💳 카드 내역 불러오기</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+          <select id="card-company" style="flex:1;padding:9px 12px;border:1.5px solid var(--border);border-radius:10px;font-size:14px;font-family:inherit;background:var(--card);color:var(--text);outline:none">
+            <option value="">카드사 선택</option>
+            <option value="shinhan">신한카드</option>
+            <option value="hyundai">현대카드</option>
+            <option value="kookmin">국민카드</option>
+            <option value="lotte">롯데카드</option>
+          </select>
+          <label style="flex:1;padding:9px 12px;border:1.5px dashed var(--border);border-radius:10px;font-size:14px;color:var(--text-secondary);cursor:pointer;text-align:center;display:flex;align-items:center;justify-content:center;gap:6px">
+            📂 <span id="card-file-label">엑셀 파일 선택</span>
+            <input type="file" id="card-file" accept=".xlsx,.xls,.csv" style="display:none"/>
+          </label>
+        </div>
+        <div id="card-preview-area" style="display:none">
+          <div style="font-size:13px;color:var(--text-secondary);margin-bottom:8px" id="card-preview-info"></div>
+          <ul class="tx-list" id="card-preview-list" style="max-height:300px;overflow-y:auto"></ul>
+          <div style="display:flex;gap:8px;margin-top:12px">
+            <button class="btn-cancel" id="btn-card-cancel" style="flex:1">취소</button>
+            <button class="form-submit" id="btn-card-import" style="flex:2">선택 항목 가져오기</button>
+          </div>
+        </div>
+      </div>
       <div class="search-wrap">
         <div class="search-row">
           <input type="text" id="search-input" placeholder="🔍 카테고리, 메모, #태그 검색..."/>
@@ -349,6 +383,7 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
 <div class="img-overlay" id="img-overlay"><button class="img-overlay-close" id="img-close">×</button><img id="img-src" src="" alt="영수증"/></div>
 <div class="toast" id="toast"></div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getAuth, signInWithPopup, GoogleAuthProvider, signInWithEmailAndPassword, createUserWithEmailAndPassword, onAuthStateChanged, signOut, getRedirectResult } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
@@ -399,14 +434,21 @@ if(localStorage.getItem('theme')==='dark'){document.body.classList.add('dark');g
 g('date-input').value=now.toISOString().split('T')[0];
 
 // 버튼 이벤트
-async function googleLogin(hint) {
+const isSafariOrInApp = /Safari/i.test(navigator.userAgent) && !/Chrome/i.test(navigator.userAgent)
+  || /Instagram|FBAN|FBAV|Twitter|Telegram|Line|KakaoTalk/i.test(navigator.userAgent);
+
+async function googleLogin() {
   try {
     const provider = new GoogleAuthProvider();
     provider.setCustomParameters({prompt: 'select_account'});
-    await signInWithPopup(auth, provider);
+    if (isSafariOrInApp) {
+      const {signInWithRedirect} = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js");
+      await signInWithRedirect(auth, provider);
+    } else {
+      await signInWithPopup(auth, provider);
+    }
   } catch(e) {
     if (e.code === 'auth/popup-blocked' || e.code === 'auth/popup-closed-by-user') {
-      // 팝업 차단되면 redirect 방식으로 전환
       try {
         const provider = new GoogleAuthProvider();
         provider.setCustomParameters({prompt: 'select_account'});
@@ -634,6 +676,195 @@ async function applyFixed(){
   for(const f of fexps){if(f.day!==d)continue;const ok=txs.some(t=>t.date===ds&&t.memo===`[고정] ${f.name}`&&t.amount===f.amount);if(!ok){await addDoc(collection(db,'households',hid,'transactions'),{type:'expense',amount:f.amount,date:ds,category:f.category,memo:`[고정] ${f.name}`,addedBy:'자동기록',createdAt:serverTimestamp()});toast(`🔁 고정지출: ${f.name}`)}}
   for(const f of fincs){if(f.day!==d)continue;const ok=txs.some(t=>t.date===ds&&t.memo===`[반복수입] ${f.name}`&&t.amount===f.amount);if(!ok){await addDoc(collection(db,'households',hid,'transactions'),{type:'income',amount:f.amount,date:ds,category:f.category,memo:`[반복수입] ${f.name}`,addedBy:'자동기록',createdAt:serverTimestamp()});toast(`💚 반복수입: ${f.name}`)}}
 }
+
+// ── 카드사 자동 매핑 ──
+const CAT_MAP = {
+  '스타벅스':'식비','커피':'식비','카페':'식비','이디야':'식비','투썸':'식비','빽다방':'식비','할리스':'식비',
+  '맥도날드':'식비','버거킹':'식비','롯데리아':'식비','kfc':'식비','서브웨이':'식비',
+  'gs25':'식비','cu':'식비','세븐일레븐':'식비','미니스톱':'식비','편의점':'식비',
+  '이마트':'식비','홈플러스':'식비','롯데마트':'식비','코스트코':'식비','마켓컬리':'식비','쿠팡이츠':'식비',
+  '쿠팡':'쇼핑','네이버페이':'쇼핑','카카오페이':'쇼핑','11번가':'쇼핑','g마켓':'쇼핑','옥션':'쇼핑','위메프':'쇼핑','티몬':'쇼핑',
+  '신세계':'쇼핑','현대백화점':'쇼핑','롯데백화점':'쇼핑',
+  '지하철':'교통','버스':'교통','택시':'교통','카카오택시':'교통','우티':'교통','티머니':'교통',
+  'kt':'공과금','sk':'공과금','lg':'공과금','kt텔레콤':'공과금','도시가스':'공과금','한전':'공과금',
+  '병원':'의료','약국':'의료','의원':'의료','클리닉':'의료','치과':'의료','한의원':'의료',
+  '영화':'문화','cgv':'문화','메가박스':'문화','롯데시네마':'문화','넷플릭스':'문화',
+  '학원':'교육','교육':'교육','도서':'교육','yes24':'교육','알라딘':'교육',
+};
+
+function autoCategory(name, expCats) {
+  if (!name) return expCats[0] || '기타';
+  const lower = name.toLowerCase();
+  for (const [key, cat] of Object.entries(CAT_MAP)) {
+    if (lower.includes(key)) return expCats.includes(cat) ? cat : (expCats[0] || '기타');
+  }
+  return expCats[0] || '기타';
+}
+
+// 날짜 파싱
+function parseDate(str) {
+  if (!str) return '';
+  str = String(str).trim();
+  // 신한: "2026.04.18 22:05" or 롯데: "2026.04.12"
+  let m = str.match(/(\d{4})[.\-\/](\d{1,2})[.\-\/](\d{1,2})/);
+  if (m) return `${m[1]}-${m[2].padStart(2,'0')}-${m[3].padStart(2,'0')}`;
+  // 현대: "2026년 04월 18일"
+  m = str.match(/(\d{4})년\s*(\d{1,2})월\s*(\d{1,2})일/);
+  if (m) return `${m[1]}-${m[2].padStart(2,'0')}-${m[3].padStart(2,'0')}`;
+  // 숫자만: 20260418
+  m = str.match(/^(\d{4})(\d{2})(\d{2})$/);
+  if (m) return `${m[1]}-${m[2]}-${m[3]}`;
+  return '';
+}
+
+// 금액 파싱
+function parseAmt(val) {
+  if (val === undefined || val === null) return 0;
+  return parseInt(String(val).replace(/[^0-9]/g, '')) || 0;
+}
+
+// 카드사별 파싱
+function parseCardRows(rows, company) {
+  const result = [];
+  if (company === 'shinhan') {
+    // 헤더: 1행(인덱스0), 데이터: 2행~
+    // 컬럼: A=거래일, D=가맹점명, F=금액, K=취소상태
+    for (let i = 1; i < rows.length; i++) {
+      const r = rows[i];
+      const cancel = String(r[10] || '').trim();
+      if (cancel === '취소') continue;
+      const date = parseDate(r[0]);
+      const name = String(r[3] || '').trim();
+      const amt = parseAmt(r[5]);
+      if (!date || amt <= 0) continue;
+      result.push({ date, name, amt });
+    }
+  } else if (company === 'hyundai') {
+    // 헤더가 여러 행 있음, "이용일" 컬럼 찾기
+    let startRow = -1;
+    for (let i = 0; i < rows.length; i++) {
+      const r = rows[i];
+      if (r.some(c => String(c||'').includes('이용일'))) { startRow = i + 1; break; }
+    }
+    if (startRow < 0) startRow = 7;
+    for (let i = startRow; i < rows.length; i++) {
+      const r = rows[i];
+      const date = parseDate(r[0]);
+      const name = String(r[2] || '').trim();
+      const amt = parseAmt(r[3]);
+      if (!date || amt <= 0 || !name) continue;
+      result.push({ date, name, amt });
+    }
+  } else if (company === 'kookmin') {
+    // 헤더: 7행(인덱스6), 데이터: 8행~
+    // 컬럼: A=이용일, E=이용하신곳, F=국내이용금액
+    for (let i = 7; i < rows.length; i++) {
+      const r = rows[i];
+      const date = parseDate(r[0]);
+      const name = String(r[4] || '').trim();
+      const amt = parseAmt(r[5]);
+      if (!date || amt <= 0 || !name) continue;
+      result.push({ date, name, amt });
+    }
+  } else if (company === 'lotte') {
+    // 헤더: 10~11행, 데이터: 12행~(인덱스11~)
+    // 컬럼: A=이용일, C=이용가맹점, D=이용총액
+    for (let i = 11; i < rows.length; i++) {
+      const r = rows[i];
+      const date = parseDate(r[0]);
+      const name = String(r[2] || '').trim();
+      const amt = parseAmt(r[3]);
+      if (!date || amt <= 0 || !name) continue;
+      result.push({ date, name, amt });
+    }
+  }
+  return result;
+}
+
+// 파일 업로드 처리
+let cardParsedData = [];
+
+g('card-file').addEventListener('change', e => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const company = g('card-company').value;
+  if (!company) { toast('카드사를 먼저 선택해주세요'); g('card-file').value=''; return; }
+  g('card-file-label').textContent = file.name;
+
+  const reader = new FileReader();
+  reader.onload = ev => {
+    try {
+      const wb = XLSX.read(ev.target.result, { type: 'array', cellText: true, cellDates: true });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false, defval: '' });
+      cardParsedData = parseCardRows(rows, company);
+
+      if (!cardParsedData.length) {
+        toast('파싱된 데이터가 없습니다. 카드사 선택이 맞는지 확인해주세요');
+        return;
+      }
+
+      // 미리보기 렌더링
+      g('card-preview-info').textContent = `총 ${cardParsedData.length}건 발견 — 가져올 항목을 선택해주세요`;
+      g('card-preview-list').innerHTML = cardParsedData.map((d, i) => {
+        const cat = autoCategory(d.name, expCats);
+        const catOpts = expCats.map(c => `<option${c===cat?' selected':''}>${c}</option>`).join('');
+        return `<div class="card-import-item">
+          <input type="checkbox" class="card-import-cb" data-idx="${i}" checked/>
+          <div class="card-import-info">
+            <div class="card-import-name">${d.name}</div>
+            <div class="card-import-date">${d.date}</div>
+          </div>
+          <select class="card-import-cat" data-idx="${i}">${catOpts}</select>
+          <div class="card-import-amt">-${fmt(d.amt)}</div>
+        </div>`;
+      }).join('');
+      g('card-preview-area').style.display = 'block';
+    } catch(err) {
+      toast('파일을 읽는 중 오류가 발생했습니다: ' + err.message);
+    }
+  };
+  reader.readAsArrayBuffer(file);
+});
+
+g('btn-card-cancel').addEventListener('click', () => {
+  g('card-preview-area').style.display = 'none';
+  g('card-file').value = '';
+  g('card-file-label').textContent = '엑셀 파일 선택';
+  cardParsedData = [];
+});
+
+g('btn-card-import').addEventListener('click', async () => {
+  const checked = document.querySelectorAll('.card-import-cb:checked');
+  if (!checked.length) { toast('가져올 항목을 선택해주세요'); return; }
+
+  const company = g('card-company').value;
+  const companyNames = { shinhan:'신한카드', hyundai:'현대카드', kookmin:'국민카드', lotte:'롯데카드' };
+  let count = 0;
+
+  for (const cb of checked) {
+    const idx = parseInt(cb.dataset.idx);
+    const d = cardParsedData[idx];
+    const cat = document.querySelector(`.card-import-cat[data-idx="${idx}"]`).value;
+    await addDoc(collection(db,'households',hid,'transactions'), {
+      type: 'expense',
+      amount: d.amt,
+      date: d.date,
+      category: cat,
+      memo: d.name,
+      addedBy: companyNames[company] || '카드',
+      receipt: null,
+      createdAt: serverTimestamp()
+    });
+    count++;
+  }
+
+  toast(`✅ ${count}건 가져오기 완료!`);
+  g('card-preview-area').style.display = 'none';
+  g('card-file').value = '';
+  g('card-file-label').textContent = '엑셀 파일 선택';
+  cardParsedData = [];
+});
 
 function switchTab(name){
   document.querySelectorAll('.tab-content').forEach(el=>el.classList.remove('active'));
