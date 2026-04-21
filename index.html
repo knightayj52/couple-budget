@@ -783,6 +783,45 @@ function parseCardRows(rows, company) {
 // 파일 업로드 처리
 let cardParsedData = [];
 
+// HTML형 XLS 파싱 (현대/롯데 등 HTML테이블로 된 XLS)
+function parseHtmlXls(htmlText, company) {
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(htmlText, 'text/html');
+  const tables = doc.querySelectorAll('table');
+  const result = [];
+  if (company === 'hyundai') {
+    // 테이블 1개, 헤더 3행(인덱스2), 데이터 4행~(인덱스3~)
+    // 컬럼: 0=이용일, 2=이용가맹점, 3=이용금액
+    const rows = tables[0] ? tables[0].querySelectorAll('tr') : [];
+    for (let i = 3; i < rows.length; i++) {
+      const cells = [...rows[i].querySelectorAll('td,th')].map(c=>c.textContent.trim());
+      const dateStr = cells[0] || '';
+      if (!dateStr || dateStr === '-' || dateStr.includes('합계')) continue;
+      const date = parseDate(dateStr);
+      const name = cells[2] || '';
+      const amt = parseAmt(cells[3]);
+      if (!date || amt <= 0 || !name) continue;
+      result.push({ date, name, amt });
+    }
+  } else if (company === 'lotte') {
+    // 테이블 2개, 두 번째 테이블의 데이터 (3행~, 인덱스2~)
+    // 컬럼: 0=이용일, 2=이용가맹점, 3=이용총액
+    const table = tables[1] || tables[0];
+    const rows = table ? table.querySelectorAll('tr') : [];
+    for (let i = 2; i < rows.length; i++) {
+      const cells = [...rows[i].querySelectorAll('td,th')].map(c=>c.textContent.trim());
+      const dateStr = cells[0] || '';
+      if (!dateStr) continue;
+      const date = parseDate(dateStr);
+      const name = cells[2] || '';
+      const amt = parseAmt(cells[3]);
+      if (!date || amt <= 0 || !name) continue;
+      result.push({ date, name, amt });
+    }
+  }
+  return result;
+}
+
 g('card-file').addEventListener('change', e => {
   const file = e.target.files[0];
   if (!file) return;
@@ -790,13 +829,19 @@ g('card-file').addEventListener('change', e => {
   if (!company) { toast('카드사를 먼저 선택해주세요'); g('card-file').value=''; return; }
   g('card-file-label').textContent = file.name;
 
+  const isHtmlXls = company === 'hyundai' || company === 'lotte';
   const reader = new FileReader();
   reader.onload = ev => {
     try {
-      const wb = XLSX.read(ev.target.result, { type: 'array', cellText: true, cellDates: true });
-      const ws = wb.Sheets[wb.SheetNames[0]];
-      const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false, defval: '' });
-      cardParsedData = parseCardRows(rows, company);
+      // 현대/롯데는 HTML형 XLS → 텍스트로 파싱
+      if (isHtmlXls) {
+        cardParsedData = parseHtmlXls(ev.target.result, company);
+      } else {
+        const wb = XLSX.read(new Uint8Array(ev.target.result), { type: 'array', cellText: true, cellDates: true });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false, defval: '' });
+        cardParsedData = parseCardRows(rows, company);
+      }
 
       if (!cardParsedData.length) {
         toast('파싱된 데이터가 없습니다. 카드사 선택이 맞는지 확인해주세요');
@@ -823,7 +868,11 @@ g('card-file').addEventListener('change', e => {
       toast('파일을 읽는 중 오류가 발생했습니다: ' + err.message);
     }
   };
-  reader.readAsArrayBuffer(file);
+  if (isHtmlXls) {
+    reader.readAsText(file, 'utf-8');
+  } else {
+    reader.readAsArrayBuffer(file);
+  }
 });
 
 g('btn-card-cancel').addEventListener('click', () => {
