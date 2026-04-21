@@ -740,16 +740,13 @@ function parseCardRows(rows, company) {
       result.push({ date, name, amt });
     }
   } else if (company === 'hyundai') {
-    // 헤더가 여러 행 있음, "이용일" 컬럼 찾기
-    let startRow = -1;
-    for (let i = 0; i < rows.length; i++) {
+    // 헤더: 3행(인덱스2), 데이터: 4행~(인덱스3~)
+    // 컬럼: A(0)=이용일, C(2)=이용가맹점, D(3)=이용금액
+    for (let i = 3; i < rows.length; i++) {
       const r = rows[i];
-      if (r.some(c => String(c||'').includes('이용일'))) { startRow = i + 1; break; }
-    }
-    if (startRow < 0) startRow = 7;
-    for (let i = startRow; i < rows.length; i++) {
-      const r = rows[i];
-      const date = parseDate(r[0]);
+      const dateStr = String(r[0] || '').trim();
+      if (!dateStr || dateStr === '-' || dateStr.includes('합계') || dateStr.includes('총')) continue;
+      const date = parseDate(dateStr);
       const name = String(r[2] || '').trim();
       const amt = parseAmt(r[3]);
       if (!date || amt <= 0 || !name) continue;
@@ -767,11 +764,13 @@ function parseCardRows(rows, company) {
       result.push({ date, name, amt });
     }
   } else if (company === 'lotte') {
-    // 헤더: 10~11행, 데이터: 12행~(인덱스11~)
-    // 컬럼: A=이용일, C=이용가맹점, D=이용총액
+    // 헤더: 10~11행(인덱스9~10), 데이터: 12행~(인덱스11~)
+    // 컬럼: A(0)=이용일, C(2)=이용가맹점, D(3)=이용총액(원 포함)
     for (let i = 11; i < rows.length; i++) {
       const r = rows[i];
-      const date = parseDate(r[0]);
+      const dateStr = String(r[0] || '').trim();
+      if (!dateStr) continue;
+      const date = parseDate(dateStr);
       const name = String(r[2] || '').trim();
       const amt = parseAmt(r[3]);
       if (!date || amt <= 0 || !name) continue;
