@@ -393,15 +393,14 @@ const app = initializeApp({apiKey:"AIzaSyCUxljPd4_l7O54komV28wOYtqRBi7dRgM",auth
 const auth = getAuth(app);
 const db = getFirestore(app);
 
-// 모바일 redirect 로그인 결과 처리
+// 모바일 redirect 로그인 결과 처리 (onAuthStateChanged 전에 실행)
 getRedirectResult(auth).then(result => {
+  // redirect 결과가 있으면 onAuthStateChanged가 자동으로 처리함
   if (result && result.user) {
-    // redirect 로그인 성공 - onAuthStateChanged가 자동 처리
+    console.log('redirect login success:', result.user.email);
   }
 }).catch(e => {
-  if (e.code !== 'auth/no-current-user') {
-    console.error('redirect error:', e);
-  }
+  // 에러 무시 (redirect 없이 접속한 경우 포함)
 });
 
 // 상태
@@ -517,9 +516,28 @@ document.addEventListener('click',async e=>{
 });
 
 // 인증
-onAuthStateChanged(auth,async user=>{
-  if(user){cu=user;g('login-screen').style.display='none';g('app-screen').style.display='block';g('user-avatar').textContent=(user.displayName||user.email||'?')[0].toUpperCase();await initHousehold()}
-  else{cu=null;hid=null;g('login-screen').style.display='flex';g('app-screen').style.display='none'}
+// 로딩 중 여부 (redirect 처리 중 깜빡임 방지)
+let authResolved = false;
+
+onAuthStateChanged(auth, async user => {
+  authResolved = true;
+  if (user) {
+    cu = user;
+    g('login-screen').style.display = 'none';
+    g('app-screen').style.display = 'block';
+    g('user-avatar').textContent = (user.displayName || user.email || '?')[0].toUpperCase();
+    await initHousehold();
+  } else {
+    cu = null;
+    hid = null;
+    // redirect 처리 중인지 확인 (짧은 딜레이로 깜빡임 방지)
+    setTimeout(() => {
+      if (!cu) {
+        g('login-screen').style.display = 'flex';
+        g('app-screen').style.display = 'none';
+      }
+    }, 500);
+  }
 });
 
 async function initHousehold(){
