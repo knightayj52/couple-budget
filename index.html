@@ -389,19 +389,37 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/fireba
 import { getAuth, signInWithPopup, GoogleAuthProvider, signInWithEmailAndPassword, createUserWithEmailAndPassword, onAuthStateChanged, signOut, getRedirectResult } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import { getFirestore, doc, collection, addDoc, onSnapshot, deleteDoc, updateDoc, setDoc, getDoc, query, orderBy, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
-const app = initializeApp({apiKey:"AIzaSyCUxljPd4_l7O54komV28wOYtqRBi7dRgM",authDomain:"couple-budget-71271.firebaseapp.com",projectId:"couple-budget-71271",storageBucket:"couple-budget-71271.firebasestorage.app",messagingSenderId:"952025069468",appId:"1:952025069468:web:3c9ff9e138dbc9e99c7a59",measurementId:"G-1DE7GKZ7N2"});
+// 현재 도메인을 authDomain으로 사용 (모바일 redirect 안정화)
+const currentHost = window.location.hostname;
+const useCurrentDomain = currentHost.includes('vercel.app') || currentHost === 'localhost' || currentHost === '127.0.0.1';
+const app = initializeApp({
+  apiKey: "AIzaSyCUxljPd4_l7O54komV28wOYtqRBi7dRgM",
+  authDomain: useCurrentDomain ? currentHost : "couple-budget-71271.firebaseapp.com",
+  projectId: "couple-budget-71271",
+  storageBucket: "couple-budget-71271.firebasestorage.app",
+  messagingSenderId: "952025069468",
+  appId: "1:952025069468:web:3c9ff9e138dbc9e99c7a59",
+  measurementId: "G-1DE7GKZ7N2"
+});
 const auth = getAuth(app);
 const db = getFirestore(app);
 
-// 모바일 redirect 로그인 결과 처리 (onAuthStateChanged 전에 실행)
-getRedirectResult(auth).then(result => {
-  // redirect 결과가 있으면 onAuthStateChanged가 자동으로 처리함
-  if (result && result.user) {
-    console.log('redirect login success:', result.user.email);
-  }
-}).catch(e => {
-  // 에러 무시 (redirect 없이 접속한 경우 포함)
-});
+// 모바일 redirect 로그인 결과 처리
+let isProcessingRedirect = true;
+getRedirectResult(auth)
+  .then(result => {
+    isProcessingRedirect = false;
+    if (result && result.user) {
+      console.log('✅ redirect login success:', result.user.email);
+    }
+  })
+  .catch(e => {
+    isProcessingRedirect = false;
+    console.error('redirect error:', e.code, e.message);
+    if (e.code && e.code !== 'auth/no-current-user') {
+      showErr('로그인 실패: ' + e.message);
+    }
+  });
 
 // 상태
 let cu=null, hid=null, txs=[], incCats=[], expCats=[], assets=[], debts=[], budgets={}, fexps=[], fincs=[], goals=[];
@@ -516,11 +534,7 @@ document.addEventListener('click',async e=>{
 });
 
 // 인증
-// 로딩 중 여부 (redirect 처리 중 깜빡임 방지)
-let authResolved = false;
-
 onAuthStateChanged(auth, async user => {
-  authResolved = true;
   if (user) {
     cu = user;
     g('login-screen').style.display = 'none';
@@ -530,13 +544,18 @@ onAuthStateChanged(auth, async user => {
   } else {
     cu = null;
     hid = null;
-    // redirect 처리 중인지 확인 (짧은 딜레이로 깜빡임 방지)
-    setTimeout(() => {
-      if (!cu) {
-        g('login-screen').style.display = 'flex';
-        g('app-screen').style.display = 'none';
-      }
-    }, 500);
+    // redirect 처리 중이면 1초 대기 후 다시 확인
+    if (isProcessingRedirect) {
+      setTimeout(() => {
+        if (!cu) {
+          g('login-screen').style.display = 'flex';
+          g('app-screen').style.display = 'none';
+        }
+      }, 1500);
+    } else {
+      g('login-screen').style.display = 'flex';
+      g('app-screen').style.display = 'none';
+    }
   }
 });
 
