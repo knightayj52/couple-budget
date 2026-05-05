@@ -386,40 +386,35 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getAuth, signInWithPopup, GoogleAuthProvider, signInWithEmailAndPassword, createUserWithEmailAndPassword, onAuthStateChanged, signOut, getRedirectResult } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+import { getAuth, signInWithPopup, signInWithRedirect, GoogleAuthProvider, signInWithEmailAndPassword, createUserWithEmailAndPassword, onAuthStateChanged, signOut, getRedirectResult, setPersistence, browserLocalPersistence, indexedDBLocalPersistence } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import { getFirestore, doc, collection, addDoc, onSnapshot, deleteDoc, updateDoc, setDoc, getDoc, query, orderBy, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
-// 현재 도메인을 authDomain으로 사용 (모바일 redirect 안정화)
-const currentHost = window.location.hostname;
-const useCurrentDomain = currentHost.includes('vercel.app') || currentHost === 'localhost' || currentHost === '127.0.0.1';
-const app = initializeApp({
-  apiKey: "AIzaSyCUxljPd4_l7O54komV28wOYtqRBi7dRgM",
-  authDomain: useCurrentDomain ? currentHost : "couple-budget-71271.firebaseapp.com",
-  projectId: "couple-budget-71271",
-  storageBucket: "couple-budget-71271.firebasestorage.app",
-  messagingSenderId: "952025069468",
-  appId: "1:952025069468:web:3c9ff9e138dbc9e99c7a59",
-  measurementId: "G-1DE7GKZ7N2"
-});
+const app = initializeApp({apiKey:"AIzaSyCUxljPd4_l7O54komV28wOYtqRBi7dRgM",authDomain:"couple-budget-71271.firebaseapp.com",projectId:"couple-budget-71271",storageBucket:"couple-budget-71271.firebasestorage.app",messagingSenderId:"952025069468",appId:"1:952025069468:web:3c9ff9e138dbc9e99c7a59",measurementId:"G-1DE7GKZ7N2"});
 const auth = getAuth(app);
 const db = getFirestore(app);
 
-// 모바일 redirect 로그인 결과 처리
+// persistence 설정 - 모바일 사파리에서 redirect 결과 보존을 위해 필수
 let isProcessingRedirect = true;
-getRedirectResult(auth)
-  .then(result => {
-    isProcessingRedirect = false;
+(async () => {
+  try {
+    // indexedDB 우선 시도 (사파리 호환성 좋음), 실패하면 localStorage
+    await setPersistence(auth, indexedDBLocalPersistence).catch(() => 
+      setPersistence(auth, browserLocalPersistence)
+    );
+    // persistence 설정 후 redirect 결과 처리
+    const result = await getRedirectResult(auth);
     if (result && result.user) {
       console.log('✅ redirect login success:', result.user.email);
     }
-  })
-  .catch(e => {
-    isProcessingRedirect = false;
-    console.error('redirect error:', e.code, e.message);
+  } catch(e) {
+    console.error('redirect/persistence error:', e.code, e.message);
     if (e.code && e.code !== 'auth/no-current-user') {
       showErr('로그인 실패: ' + e.message);
     }
-  });
+  } finally {
+    isProcessingRedirect = false;
+  }
+})();
 
 // 상태
 let cu=null, hid=null, txs=[], incCats=[], expCats=[], assets=[], debts=[], budgets={}, fexps=[], fincs=[], goals=[];
@@ -459,7 +454,6 @@ async function googleLogin() {
     const provider = new GoogleAuthProvider();
     provider.setCustomParameters({prompt: 'select_account'});
     if (isSafariOrInApp) {
-      const {signInWithRedirect} = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js");
       await signInWithRedirect(auth, provider);
     } else {
       await signInWithPopup(auth, provider);
@@ -469,7 +463,6 @@ async function googleLogin() {
       try {
         const provider = new GoogleAuthProvider();
         provider.setCustomParameters({prompt: 'select_account'});
-        const {signInWithRedirect} = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js");
         await signInWithRedirect(auth, provider);
       } catch(e2) { showErr(e2.message); }
     } else {
